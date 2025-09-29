@@ -1,6 +1,7 @@
 # server.py
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -99,12 +100,28 @@ history)
 
     return RunResp(result=out)
 
-# ----------------- UI: página '/' en modo oscuro con burbujas 
-# -----------------
-@app.get("/", response_class=HTMLResponse)
-def home():
-    return """
-<!doctype html>
+# ----------------- Servir archivos estáticos -----------------
+# Montar la carpeta static para servir el HTML/CSS/JS
+try:
+    app.mount("/assets", StaticFiles(directory="static"), name="static")
+except RuntimeError:
+    pass  # Si no existe la carpeta, continuar sin ella
+
+@app.get("/")
+async def home():
+    """Sirve el archivo index.html desde la carpeta static"""
+    static_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
+    if os.path.exists(static_path):
+        return FileResponse(static_path)
+    # Fallback si no existe el archivo
+    return {"message": "UI not found. API available at /docs"}
+
+# ----------------- Ruta de fallback legacy (comentada para referencia) -----------------
+# Si necesitas volver al HTML inline, descomenta esto y comenta el código arriba
+"""
+@app.get("/old", response_class=HTMLResponse)
+def home_legacy():
+    return '''<!doctype html>
 <html lang="es">
 <head>
 <meta charset="utf-8"><meta name="viewport" 
@@ -258,7 +275,7 @@ task.addEventListener('keydown', (e)=>{ if(e.key==='Enter' && !e.shiftKey){ e.pr
 resetBtn.onclick = ()=>sendTask(true);
 </script>
 </body>
-</html>
+</html>'''
 """
 
 @app.get("/health")

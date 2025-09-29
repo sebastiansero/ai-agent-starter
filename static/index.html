@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agente de Tendencias Web</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #0e1429;
+      --text: #e6e8ee;
+      --assist: #111827;
+      --user: #1f6feb;
+      --muted: #94a3b8;
+      --ring: #1f2937;
+      --error: #ef4444;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      padding: 20px;
+    }
+    .container {
+      max-width: 920px;
+      margin: 0 auto;
+    }
+    h1 {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+      font-size: 28px;
+    }
+    .subtitle {
+      color: var(--muted);
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+    .chat-box {
+      background: var(--panel);
+      border: 1px solid var(--ring);
+      border-radius: 16px;
+      padding: 20px;
+      height: 60vh;
+      overflow-y: auto;
+      margin-bottom: 16px;
+    }
+    .message {
+      display: flex;
+      margin-bottom: 16px;
+    }
+    .message.user {
+      justify-content: flex-end;
+    }
+    .bubble {
+      max-width: 75%;
+      padding: 12px 16px;
+      border-radius: 14px;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+    }
+    .message.assistant .bubble {
+      background: var(--assist);
+      color: #e5e7eb;
+      border-top-left-radius: 4px;
+    }
+    .message.user .bubble {
+      background: var(--user);
+      color: #fff;
+      border-top-right-radius: 4px;
+    }
+    .message.error .bubble {
+      background: var(--error);
+      color: #fff;
+    }
+    .typing .bubble {
+      background: var(--assist);
+      padding: 16px;
+    }
+    .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      margin-right: 4px;
+      border-radius: 50%;
+      background: #cbd5e1;
+      animation: pulse 1.4s infinite;
+    }
+    .dot:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+    .dot:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+    @keyframes pulse {
+      0%, 80%, 100% {
+        opacity: 0.3;
+      }
+      40% {
+        opacity: 1;
+      }
+    }
+    .input-area {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    textarea {
+      flex: 1;
+      min-height: 60px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--ring);
+      background: #0a0f1f;
+      color: var(--text);
+      font: inherit;
+      resize: vertical;
+    }
+    textarea:focus {
+      outline: 2px solid var(--user);
+      outline-offset: 2px;
+    }
+    button {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 12px;
+      background: var(--user);
+      color: #fff;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    button:hover:not(:disabled) {
+      opacity: 0.9;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .button-secondary {
+      background: #374151;
+    }
+    .hint {
+      font-size: 13px;
+      color: var(--muted);
+      text-align: center;
+    }
+    .status {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      background: var(--panel);
+      border: 1px solid var(--ring);
+      font-size: 12px;
+      display: none;
+    }
+    .status.show {
+      display: block;
+    }
+    .status.online {
+      border-color: #10b981;
+      color: #10b981;
+    }
+    .status.offline {
+      border-color: var(--error);
+      color: var(--error);
+    }
+  </style>
+</head>
+<body>
+  <div class="status" id="status">Conectando...</div>
+  
+  <div class="container">
+    <h1>
+      <span>🧠</span>
+      <span>Agente de Tendencias Web</span>
+    </h1>
+    <p class="subtitle">
+      Pregunta sobre tendencias, noticias o cualquier tema. El agente buscará información actualizada y te dará un resumen con fuentes.
+    </p>
+
+    <div class="chat-box" id="chat"></div>
+
+    <div class="input-area">
+      <textarea 
+        id="input" 
+        placeholder="Escribe tu pregunta aquí... (Enter para enviar, Shift+Enter para nueva línea)"
+        autofocus
+      ></textarea>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <button id="sendBtn">Enviar</button>
+        <button id="resetBtn" class="button-secondary">Limpiar</button>
+      </div>
+    </div>
+
+    <p class="hint">
+      Ejemplo: "¿Qué está pasando con la inteligencia artificial?" • 
+      También puedes usar la API en <a href="/docs" style="color: var(--user);">/docs</a>
+    </p>
+  </div>
+
+  <script>
+    // Elementos del DOM
+    const chat = document.getElementById('chat');
+    const input = document.getElementById('input');
+    const sendBtn = document.getElementById('sendBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const status = document.getElementById('status');
+
+    // Session ID persistente
+    let sessionId = localStorage.getItem('agent_session_id');
+    if (!sessionId) {
+      sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem('agent_session_id', sessionId);
+    }
+
+    // Estado
+    let isProcessing = false;
+
+    // Funciones auxiliares
+    function addMessage(role, text) {
+      const msg = document.createElement('div');
+      msg.className = 'message ' + role;
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      bubble.textContent = text;
+      msg.appendChild(bubble);
+      chat.appendChild(msg);
+      chat.scrollTop = chat.scrollHeight;
+      return msg;
+    }
+
+    function addTyping() {
+      const msg = document.createElement('div');
+      msg.className = 'message assistant typing';
+      msg.id = 'typing-indicator';
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      bubble.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
+      msg.appendChild(bubble);
+      chat.appendChild(msg);
+      chat.scrollTop = chat.scrollHeight;
+      return msg;
+    }
+
+    function removeTyping() {
+      const typing = document.getElementById('typing-indicator');
+      if (typing) {
+        typing.remove();
+      }
+    }
+
+    function setProcessing(processing) {
+      isProcessing = processing;
+      sendBtn.disabled = processing;
+      resetBtn.disabled = processing;
+      input.disabled = processing;
+    }
+
+    function showStatus(message, type) {
+      status.textContent = message;
+      status.className = 'status show ' + type;
+      setTimeout(() => {
+        status.classList.remove('show');
+      }, 3000);
+    }
+
+    // Enviar mensaje
+    async function sendMessage() {
+      const text = input.value.trim();
+      if (!text || isProcessing) return;
+
+      // Limpiar input y agregar mensaje del usuario
+      input.value = '';
+      addMessage('user', text);
+      setProcessing(true);
+
+      // Mostrar indicador de escritura
+      addTyping();
+
+      try {
+        const response = await fetch('/run', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            task: text,
+            session_id: sessionId,
+            reset: false
+          })
+        });
+
+        removeTyping();
+
+        if (!response.ok) {
+          throw new Error('HTTP ' + response.status + ': ' + response.statusText);
+        }
+
+        const data = await response.json();
+        const result = data.result || 'Sin respuesta';
+        addMessage('assistant', result);
+        showStatus('Respuesta recibida', 'online');
+
+      } catch (error) {
+        removeTyping();
+        addMessage('error', '❌ Error: ' + error.message);
+        showStatus('Error de conexión', 'offline');
+        console.error('Error al enviar mensaje:', error);
+      } finally {
+        setProcessing(false);
+        input.focus();
+      }
+    }
+
+    // Limpiar conversación
+    function resetChat() {
+      if (!confirm('¿Limpiar toda la conversación?')) return;
+      chat.innerHTML = '';
+      fetch('/run', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          task: '(reset)',
+          session_id: sessionId,
+          reset: true
+        })
+      }).then(() => {
+        addMessage('assistant', '✅ Conversación reiniciada');
+        showStatus('Chat limpiado', 'online');
+      }).catch(err => {
+        console.error('Error al resetear:', err);
+      });
+    }
+
+    // Event listeners
+    sendBtn.addEventListener('click', sendMessage);
+    resetBtn.addEventListener('click', resetChat);
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    // Health check inicial
+    fetch('/health')
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) {
+          showStatus('Conectado', 'online');
+        } else {
+          showStatus('Servicio limitado', 'offline');
+        }
+      })
+      .catch(() => {
+        showStatus('Sin conexión', 'offline');
+      });
+
+    // Mensaje de bienvenida
+    setTimeout(() => {
+      addMessage('assistant', '👋 Hola! Soy tu agente de tendencias web. Pregúntame sobre cualquier tema y buscaré información actualizada para ti.');
+    }, 500);
+  </script>
+</body>
+</html>
