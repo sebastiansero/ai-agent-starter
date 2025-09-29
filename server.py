@@ -1,6 +1,7 @@
 # server.py
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import os, json
@@ -11,6 +12,14 @@ load_dotenv()
 from agent import Agent  # importa después de load_dotenv
 
 app = FastAPI(title="AI Agent Starter API", version="0.1.0")
+# CORS permisivo por si la UI se sirve desde otro origen en Render
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
 agent = Agent(max_steps=8)
 
 # ----------------- Memoria de chat (archivos JSONL) 
@@ -76,8 +85,12 @@ history)
     else:
         aug_task = req.task
 
-    # 4) Ejecutar el agente
-    out = agent.run(aug_task)
+# 4) Ejecutar el agente
+    try:
+        out = agent.run(aug_task)
+    except Exception as e:
+        # Nunca devolvemos 500 al front: mejor un mensaje legible
+        out = f"Error al ejecutar el agente: {str(e)}"
 
     # 5) Guardar turno actual
     if req.session_id:
@@ -214,20 +227,34 @@ reset: true }
                        : { task: t, session_id: sid, reset: false 
 };
 
-    const r = await fetch('/run', {
+    const apiUrl = (window.location.origin + '/run');
+    const r = await fetch(apiUrl, {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify(body)
     });
-    const j = await r.json();
+    let text;
+    if(!r.ok){
+      const raw = await r.text();
+      text = `HTTP ${r.status}: ${raw?.slice(0,300) || 'Error'}`;
+    }else{
+      // Intentar parsear JSON de forma segura
+      const ct = r.headers.get('content-type') || '';
+      if(ct.includes('application/json')){
+        const j = await r.json();
+        text = (j && typeof j.result === 'string') ? j.result : JSON.stringify(j);
+      }else{
+        const raw = await r.text();
+        text = raw || 'OK';
+      }
+    }
     typing.remove();
-    const text = (j && typeof j.result === 'string') ? j.result : 
-JSON.stringify(j);
     if(!reset) addMsg('assistant', text);
     else addMsg('assistant', 'Conversación reiniciada ✅');
   }catch(e){
     typing.remove();
-    addMsg('assistant', 'Error: ' + (e?.message || e));
+    addMsg('assistant', 'Error de red: ' + (e?.message || e));
+  }finally{
   }finally{
     task.disabled = false; send.disabled = false; task.focus();
   }
