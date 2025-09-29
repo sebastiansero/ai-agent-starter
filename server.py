@@ -255,7 +255,6 @@ reset: true }
     typing.remove();
     addMsg('assistant', 'Error de red: ' + (e?.message || e));
   }finally{
-  }finally{
     task.disabled = false; send.disabled = false; task.focus();
   }
 }
