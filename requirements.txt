@@ -4,3 +4,6 @@ requests
 python-dotenv
 
 openai
+
+duckduckgo_search
+trafilatura
