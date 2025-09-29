@@ -1,0 +1,16 @@
+{"role": "user", "content": "(reset)"}
+{"role": "assistant", "content": "La memoria ha sido reiniciada."}
+{"role": "user", "content": "Mi nombre es Sebastian. Recuérdalo."}
+{"role": "assistant", "content": "OK: guardado nombre_usuario"}
+{"role": "user", "content": "¿Cómo me llamo?"}
+{"role": "assistant", "content": "Sebastian"}
+{"role": "user", "content": "Usa web_search con query \"site:docs.python.org venv\" y k 2; TERMINA listando título y url en viñetas."}
+{"role": "assistant", "content": "No se encontraron resultados para la búsqueda solicitada."}
+{"role": "user", "content": "Usa web_search con query \"qué es FastAPI\" y k 3; luego usa read_url_clean con la PRIMERA URL y TERMINA con 3 bullets claros en español."}
+{"role": "assistant", "content": "No se pudo extraer el contenido de la URL debido a un error técnico. Intenta nuevamente más tarde."}
+{"role": "user", "content": "Usa rag_upsert_url con url \"https://www.gutenberg.org/cache/epub/84/pg84.txt\" y TERMINA confirmando."}
+{"role": "assistant", "content": "[agent] Se alcanzó el máximo de pasos sin respuesta final."}
+{"role": "user", "content": "Usa rag_upsert_url con url \"https://www.gutenberg.org/cache/epub/84/pg84.txt\" y TERMINA confirmando."}
+{"role": "assistant", "content": "La URL ha sido indexada correctamente."}
+{"role": "user", "content": "Usa rag_search con query \"¿Quién es Frankenstein?\" y k 2, y TERMINA con una respuesta corta usando los matches."}
+{"role": "assistant", "content": "Frankenstein es una novela escrita por Mary Shelley, conocida como \"El Moderno Prometeo\". Puedes leerla en el Proyecto Gutenberg: [Frankenstein en Gutenberg](https://www.gutenberg.org/cache/epub/84/pg84.txt)."}

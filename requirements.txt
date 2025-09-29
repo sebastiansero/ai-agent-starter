@@ -7,6 +7,3 @@ openai
 
 duckduckgo_search
 trafilatura
-
-duckduckgo-search
-trafilatura

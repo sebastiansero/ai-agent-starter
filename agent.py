@@ -2,17 +2,24 @@ import json
 from typing import List, Dict, Any, Optional
 from llm_providers import get_default_llm
 from tools import tool_catalog_text, call_tool
+from tools import TOOLS  # para validar nombres de herramientas
 
 SYSTEM_PROMPT = """Eres un agente que resuelve tareas usando herramientas cuando es necesario.
 Responde SIEMPRE con un único objeto JSON y nada más, sin comentarios ni texto extra.
-Formatos válidos:
-- Para usar una herramienta: {{"tool": "<nombre>", "args": {{...}}}}
+Formatos válidos (usa EXACTAMENTE estos):
+- Para usar una herramienta: {{"tool": "<nombre>", "args": {{ ... }} }}
 - Para finalizar con respuesta al usuario: {{"final": "<texto>"}}
+
+NUNCA devuelvas formatos alternativos como {{"<herramienta>": {{...}}}} ni listas/strings sueltos.
+Si una herramienta falla una o dos veces, evita bucles: finaliza con una explicación breve del problema.
+Si la instrucción contiene "TERMINA", prioriza finalizar en ≤ 3 pasos.
+Para consultas del tipo "¿qué está pasando con <tema>?", "tendencias", "últimas noticias" o "estado actual de <tema>":
+- PRIORIZA usar la herramienta web_trend_scan con argumentos razonables (topic, k, max_articles).
+- Luego FINALIZA con 3-6 viñetas claras en español con insights, e incluye al final una sección "Fuentes:" listando 3-5 URLs.
 
 Herramientas disponibles:
 {tool_catalog}
 
-Si una herramienta falla, puedes intentar otra o reformular los argumentos.
 No expliques el JSON, solo devuélvelo.
 """
 
@@ -48,9 +55,29 @@ class Agent:
             return None
         return None
 
+    def _coerce_tool_call(self, parsed: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Acepta formatos alternativos y los normaliza al esquema {'tool':..., 'args':{}}.
+        - {"<tool>": {...}} → {"tool":"<tool>", "args": {...}}
+        - {"tool": "<tool>"} (sin args) → args {}
+        """
+        if not isinstance(parsed, dict):
+            return None
+        # Caso 1: un único par clave/valor cuyo nombre es una herramienta
+        if len(parsed) == 1:
+            only_key = next(iter(parsed.keys()))
+            if only_key in TOOLS:
+                args = parsed.get(only_key)
+                return {"tool": only_key, "args": args if isinstance(args, dict) else {}}
+        # Caso 2: trae 'tool' pero sin args válidos
+        if "tool" in parsed and "args" not in parsed:
+            t = str(parsed.get("tool"))
+            if t in TOOLS:
+                return {"tool": t, "args": {}}
+        return None
+
     def run(self, task: str) -> str:
         observations: List[Dict[str, Any]] = []
-        for _ in range(self.max_steps):
+        for step in range(self.max_steps):
             messages = self._messages(task, observations)
             raw = self.llm.generate(messages)
             parsed = self._parse_json(raw)
@@ -61,25 +88,53 @@ class Agent:
                 parsed = self._parse_json(raw)
                 if not parsed:
                     return f"[agent] No pude parsear JSON del modelo: {raw[:500]}"
-            if "final" in parsed:
-                return str(parsed["final"])
-            if "tool" in parsed and "args" in parsed:
-                tool_name = str(parsed["tool"])
+            # Final directo
+            if isinstance(parsed, dict) and "final" in parsed:
+                return str(parsed.get("final", ""))
+
+            # Normaliza llamadas de herramienta con formatos alternativos
+            if not (isinstance(parsed, dict) and "tool" in parsed and "args" in parsed):
+                coerced = self._coerce_tool_call(parsed if isinstance(parsed, dict) else {})
+                if coerced:
+                    parsed = coerced
+
+            # Llamada a herramienta
+            if isinstance(parsed, dict) and "tool" in parsed and "args" in parsed:
+                tool_name = str(parsed["tool"]) if parsed.get("tool") is not None else ""
                 args = parsed["args"] if isinstance(parsed["args"], dict) else {}
                 try:
                     result = call_tool(tool_name, args)
                 except Exception as e:
                     result = {"ok": False, "data": None, "error": str(e)}
 
-                # --- Autocierre para herramientas rápidas ---
+                # Autocierre para herramientas rápidas
                 if result.get("ok") and tool_name in ("memory_set", "memory_get"):
                     if tool_name == "memory_set":
                         return f"OK: guardado {args.get('key')}"
                     else:
                         val = result.get("data", {}).get("value")
                         return "" if val is None else str(val)
-                # --- fin autocierre ---
+
                 observations.append({"tool": tool_name, "result": result})
+
+                # Si la herramienta falló con un error claro, evita bucles innecesarios
+                if not result.get("ok"):
+                    err = str(result.get("error", ""))
+                    # Errores típicos de dependencias externas (e.g., embeddings)
+                    if any(tok in err for tok in ("OpenAI", "embeder", "SDK no disponible")):
+                        return f"No pude completar la tarea por un error de dependencia: {err}"
+
+                # Si repetimos demasiadas veces con errores, forzar cierre útil
+                recent = observations[-3:]
+                if len(recent) >= 2 and all(not obs.get("result", {}).get("ok") for obs in recent):
+                    # Finaliza con mensaje claro para evitar loops
+                    return f"No pude completar la tarea por errores de herramientas: {recent[-1]['result'].get('error','desconocido')}"
                 continue
-            return f"[agent] Formato no reconocido: {parsed}"
+
+            # Formato no reconocido: añade observación y reintenta, no abortes al instante
+            observations.append({"tool": "(parser)", "result": {"ok": False, "data": None, "error": f"Formato no reconocido: {parsed}"}})
+            # En el último paso, devuelve el error
+            if step == self.max_steps - 1:
+                return f"[agent] Formato no reconocido: {parsed}"
+            continue
         return "[agent] Se alcanzó el máximo de pasos sin respuesta final."
