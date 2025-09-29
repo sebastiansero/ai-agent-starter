@@ -218,16 +218,12 @@ async function sendTask(reset=false){
   if(!t && !reset) return;
 
   if(!reset){ addMsg('user', t); task.value = ''; }
-  task.disabled = true; send.disabled = true;
+  task.disabled = true; send.disabled = true; resetBtn.disabled = true;
 
   const typing = addTyping();
   try{
-    const body = reset ? { task: "(reset)", session_id: sid, 
-reset: true }
-                       : { task: t, session_id: sid, reset: false 
-};
-
-    const apiUrl = (window.location.origin + '/run');
+    const body = reset ? {task:"(reset)", session_id:sid, reset:true} : {task:t, session_id:sid, reset:false};
+    const apiUrl = window.location.origin + '/run';
     const r = await fetch(apiUrl, {
       method:'POST',
       headers:{'Content-Type':'application/json'},
@@ -236,16 +232,14 @@ reset: true }
     let text;
     if(!r.ok){
       const raw = await r.text();
-      text = `HTTP ${r.status}: ${raw?.slice(0,300) || 'Error'}`;
+      text = 'HTTP ' + r.status + ': ' + (raw?.slice(0,300) || 'Error');
     }else{
-      // Intentar parsear JSON de forma segura
       const ct = r.headers.get('content-type') || '';
       if(ct.includes('application/json')){
         const j = await r.json();
         text = (j && typeof j.result === 'string') ? j.result : JSON.stringify(j);
       }else{
-        const raw = await r.text();
-        text = raw || 'OK';
+        text = await r.text() || 'OK';
       }
     }
     typing.remove();
@@ -255,13 +249,12 @@ reset: true }
     typing.remove();
     addMsg('assistant', 'Error de red: ' + (e?.message || e));
   }finally{
-    task.disabled = false; send.disabled = false; task.focus();
+    task.disabled = false; send.disabled = false; resetBtn.disabled = false; task.focus();
   }
 }
 
 send.onclick = ()=>sendTask(false);
-task.addEventListener('keydown', (e)=>{ if(e.key==='Enter' && 
-!e.shiftKey){ e.preventDefault(); sendTask(false); }});
+task.addEventListener('keydown', (e)=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendTask(false); }});
 resetBtn.onclick = ()=>sendTask(true);
 </script>
 </body>
