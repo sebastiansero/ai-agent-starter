@@ -4,3 +4,17 @@ memory.json
 __pycache__/
 *.py[cod]
 .DS_Store
+
+# Optimization system directories
+cache/
+batches/
+content_history/
+digests/
+logs/
+metrics/
+backups/
+
+# Temporary files
+*.pyc
+*.log
+dashboard.html

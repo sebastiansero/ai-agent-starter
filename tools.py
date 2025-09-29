@@ -166,10 +166,27 @@ def call_tool(tool_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
 
 from duckduckgo_search import DDGS
 import trafilatura
+from cache_manager import cacheable
+
+def _web_search_internal(q: str, k: int):
+    """Helper interno cacheado para web_search"""
+    results = []
+    with DDGS() as ddgs:
+        for r in ddgs.text(q, max_results=k, safesearch="moderate"):
+            results.append({
+                "title": r.get("title"),
+                "url": r.get("href"),
+                "snippet": r.get("body")
+            })
+    return results
+
+@cacheable(max_age_hours=2)  # Noticias: cache corto (2 horas)
+def _cached_web_search(query: str, k: int):
+    return _web_search_internal(query, k)
 
 def web_search(args):
     """
-    Busca en la web usando DuckDuckGo.
+    Busca en la web usando DuckDuckGo (con cache de 2 horas).
     Args:
       {'query':'...', 'k': 5}
     Devuelve:
@@ -180,22 +197,30 @@ def web_search(args):
     if not q:
         return _ok(False, None, "Falta 'query'")
     try:
-        results = []
-        # safesearch: "moderate" para resultados limpios
-        with DDGS() as ddgs:
-            for r in ddgs.text(q, max_results=k, safesearch="moderate"):
-                results.append({
-                    "title": r.get("title"),
-                    "url": r.get("href"),
-                    "snippet": r.get("body")
-                })
+        results = _cached_web_search(q, k)
         return _ok(True, {"results": results}, "")
     except Exception as e:
         return _ok(False, None, f"Error en búsqueda: {e}")
 
+@cacheable(max_age_hours=24)  # Artículos: cache largo (24 horas)
+def _cached_read_url(url: str, max_chars: int):
+    downloaded = trafilatura.fetch_url(url, timeout=25)
+    if not downloaded:
+        raise ValueError("No se pudo descargar la URL")
+    text = trafilatura.extract(
+        downloaded,
+        include_comments=False,
+        include_tables=False,
+        favor_recall=True
+    ) or ""
+    text = text.strip()
+    if not text:
+        raise ValueError("No se pudo extraer texto")
+    return text[:max_chars]
+
 def read_url_clean(args):
     """
-    Descarga una URL y extrae el contenido principal (texto) con trafilatura.
+    Descarga una URL y extrae el contenido principal (texto) con trafilatura (con cache de 24 horas).
     Args:
       {'url':'https://...', 'max_chars': 4000}
     Devuelve:
@@ -206,19 +231,8 @@ def read_url_clean(args):
     if not url:
         return _ok(False, None, "Falta 'url'")
     try:
-        downloaded = trafilatura.fetch_url(url, timeout=25)
-        if not downloaded:
-            return _ok(False, None, "No se pudo descargar la URL")
-        text = trafilatura.extract(
-            downloaded,
-            include_comments=False,
-            include_tables=False,
-            favor_recall=True
-        ) or ""
-        text = text.strip()
-        if not text:
-            return _ok(False, None, "No se pudo extraer texto")
-        return _ok(True, {"text": text[:max_chars]}, "")
+        text = _cached_read_url(url, max_chars)
+        return _ok(True, {"text": text}, "")
     except Exception as e:
         return _ok(False, None, f"Error al extraer: {e}")
 

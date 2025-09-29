@@ -5,32 +5,10 @@ from typing import List, Dict, Any, Optional
 from llm_providers import get_default_llm
 from tools import tool_catalog_text, call_tool
 from tools import TOOLS  # para validar nombres de herramientas
+from prompts_optimized import AGENT_SYSTEM_PROMPT_COT, select_prompt_for_task, add_step_counter
 
-SYSTEM_PROMPT = """Eres un agente eficiente que resuelve tareas usando herramientas cuando es necesario.
-Responde SIEMPRE con un único objeto JSON y nada más, sin comentarios ni texto extra.
-
-Formatos válidos (usa EXACTAMENTE estos):
-- Para usar una herramienta: {{"tool": "<nombre>", "args": {{ ... }} }}
-- Para finalizar con respuesta: {{"final": "<texto>"}}
-
-REGLAS IMPORTANTES:
-1. NUNCA uses formatos alternativos como {{"<herramienta>": {{...}}}}.
-2. Si una herramienta falla 2 veces seguidas, NO la vuelvas a llamar. FINALIZA explicando el problema.
-3. Si ya tienes información suficiente para responder (ej: tras web_search + read_url), FINALIZA de inmediato.
-4. Máximo recomendado: 3-5 llamadas a herramientas por tarea. Después de eso, DEBES finalizar.
-5. Si la instrucción contiene "TERMINA", prioriza finalizar en ≤ 2 pasos.
-
-Para consultas tipo "¿qué está pasando con X?", "tendencias", "últimas noticias":
-- USA web_trend_scan (topic, k:6-10, max_articles:3-5, timelimit:'w')
-- LUEGO FINALIZA con:
-  * 3-6 viñetas claras (insights concretos)
-  * Sección "Fuentes:" con 3-5 URLs
-
-Herramientas disponibles:
-{tool_catalog}
-
-Solo devuelve el JSON, nada más.
-"""
+# Prompt optimizado con Chain of Thought - mejor razonamiento, menos pasos
+SYSTEM_PROMPT = AGENT_SYSTEM_PROMPT_COT
 
 class Agent:
     def __init__(self, max_steps: int = 5, auto_web: Optional[bool] = None):
