@@ -68,6 +68,8 @@ class Agent:
                 args = parsed["args"] if isinstance(parsed["args"], dict) else {}
                 try:
                     result = call_tool(tool_name, args)
+                except Exception as e:
+                    result = {"ok": False, "data": None, "error": str(e)}
 
                 # --- Autocierre para herramientas rápidas ---
                 if result.get("ok") and tool_name in ("memory_set", "memory_get"):
@@ -77,8 +79,6 @@ class Agent:
                         val = result.get("data", {}).get("value")
                         return "" if val is None else str(val)
                 # --- fin autocierre ---
-                except Exception as e:
-                    result = {"ok": False, "data": None, "error": str(e)}
                 observations.append({"tool": tool_name, "result": result})
                 continue
             return f"[agent] Formato no reconocido: {parsed}"
