@@ -1,4 +1,6 @@
 import json
+import os
+import re
 from typing import List, Dict, Any, Optional
 from llm_providers import get_default_llm
 from tools import tool_catalog_text, call_tool
@@ -24,9 +26,15 @@ No expliques el JSON, solo devuélvelo.
 """
 
 class Agent:
-    def __init__(self, max_steps: int = 5):
+    def __init__(self, max_steps: int = 5, auto_web: Optional[bool] = None):
         self.llm = get_default_llm()
         self.max_steps = max_steps
+        # Auto-web activado por defecto (desactivable con AGENT_AUTO_WEB=0)
+        if auto_web is None:
+            env = os.getenv("AGENT_AUTO_WEB", "1").lower()
+            self.auto_web = env not in ("0", "false", "off", "no")
+        else:
+            self.auto_web = bool(auto_web)
 
     def _messages(self, task: str, observations: List[Dict[str, Any]]) -> List[Dict[str, str]]:
         tool_catalog = tool_catalog_text()
@@ -55,6 +63,66 @@ class Agent:
             return None
         return None
 
+    def _looks_factual(self, task: str) -> bool:
+        t = task.strip().lower()
+        if not t:
+            return False
+        # Evita activar si el usuario pide usar herramientas explícitas
+        if any(x in t for x in ("usa web_search", "usa read_url_clean", "usa rag_", "usa memory_")):
+            return False
+        # Heurística básica para preguntas factuales o de estado actual
+        patterns = [
+            r"\?$",
+            r"^\s*¿",
+            r"\bqué es\b",
+            r"\bquién es\b",
+            r"\bcómo funciona\b",
+            r"\bdefin(e|ición)\b",
+            r"\búltimas noticias\b",
+            r"\bqué está pasando\b",
+            r"\bestado actual\b",
+            r"\btendenc(i|ia|ias|ias)\b",
+        ]
+        return any(re.search(p, t) for p in patterns)
+
+    def _auto_web_preflight(self, task: str) -> Optional[str]:
+        """Intenta resolver preguntas factuales rápidamente con web_search + read_url_clean y finalizar.
+        Devuelve el string final si lo logra; si no, devuelve None para continuar con el bucle normal.
+        """
+        # 1) Buscar
+        q = task.strip()
+        try:
+            ws = call_tool("web_search", {"query": q, "k": 6})
+        except Exception:
+            ws = {"ok": False}
+        if not (isinstance(ws, dict) and ws.get("ok") and ws.get("data", {}).get("results")):
+            return None
+        results = ws["data"]["results"]
+        # 2) Leer top 2-3 URLs
+        pre_obs: List[Dict[str, Any]] = [{"tool": "web_search", "result": ws}]
+        urls = []
+        for r in results:
+            u = r.get("url")
+            if u and u not in urls:
+                urls.append(u)
+            if len(urls) >= 3:
+                break
+        for u in urls:
+            rr = call_tool("read_url_clean", {"url": u, "max_chars": 3000})
+            pre_obs.append({"tool": "read_url_clean", "result": rr})
+        # 3) Pedir respuesta final al LLM en un solo tiro
+        aug_task = (
+            "Pregunta factual detectada. Usa las observaciones previas para responder.\n"
+            "TERMINA con 3-6 viñetas claras en español (una idea por viñeta).\n"
+            "Al final añade una sección 'Fuentes:' con 3-5 URLs de las observaciones (si existen)."
+        )
+        messages = self._messages(f"{task}\n\n{aug_task}", pre_obs)
+        raw = self.llm.generate(messages)
+        parsed = self._parse_json(raw)
+        if parsed and isinstance(parsed, dict) and "final" in parsed:
+            return str(parsed.get("final", ""))
+        return None
+
     def _coerce_tool_call(self, parsed: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Acepta formatos alternativos y los normaliza al esquema {'tool':..., 'args':{}}.
         - {"<tool>": {...}} → {"tool":"<tool>", "args": {...}}
@@ -76,6 +144,14 @@ class Agent:
         return None
 
     def run(self, task: str) -> str:
+        # Intento previo: auto-web si aplica
+        if getattr(self, "auto_web", False) and self._looks_factual(task):
+            try:
+                auto = self._auto_web_preflight(task)
+                if auto:
+                    return auto
+            except Exception:
+                pass
         observations: List[Dict[str, Any]] = []
         for step in range(self.max_steps):
             messages = self._messages(task, observations)
