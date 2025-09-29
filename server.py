@@ -21,7 +21,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
-agent = Agent(max_steps=8)
+# Aumentar max_steps para consultas complejas que requieren múltiples herramientas
+agent = Agent(max_steps=12)
 
 # ----------------- Memoria de chat (archivos JSONL) 
 # -----------------

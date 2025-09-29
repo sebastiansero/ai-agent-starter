@@ -6,23 +6,30 @@ from llm_providers import get_default_llm
 from tools import tool_catalog_text, call_tool
 from tools import TOOLS  # para validar nombres de herramientas
 
-SYSTEM_PROMPT = """Eres un agente que resuelve tareas usando herramientas cuando es necesario.
+SYSTEM_PROMPT = """Eres un agente eficiente que resuelve tareas usando herramientas cuando es necesario.
 Responde SIEMPRE con un único objeto JSON y nada más, sin comentarios ni texto extra.
+
 Formatos válidos (usa EXACTAMENTE estos):
 - Para usar una herramienta: {{"tool": "<nombre>", "args": {{ ... }} }}
-- Para finalizar con respuesta al usuario: {{"final": "<texto>"}}
+- Para finalizar con respuesta: {{"final": "<texto>"}}
 
-NUNCA devuelvas formatos alternativos como {{"<herramienta>": {{...}}}} ni listas/strings sueltos.
-Si una herramienta falla una o dos veces, evita bucles: finaliza con una explicación breve del problema.
-Si la instrucción contiene "TERMINA", prioriza finalizar en ≤ 3 pasos.
-Para consultas del tipo "¿qué está pasando con <tema>?", "tendencias", "últimas noticias" o "estado actual de <tema>":
-- PRIORIZA usar la herramienta web_trend_scan con argumentos razonables (topic, k, max_articles).
-- Luego FINALIZA con 3-6 viñetas claras en español con insights, e incluye al final una sección "Fuentes:" listando 3-5 URLs.
+REGLAS IMPORTANTES:
+1. NUNCA uses formatos alternativos como {{"<herramienta>": {{...}}}}.
+2. Si una herramienta falla 2 veces seguidas, NO la vuelvas a llamar. FINALIZA explicando el problema.
+3. Si ya tienes información suficiente para responder (ej: tras web_search + read_url), FINALIZA de inmediato.
+4. Máximo recomendado: 3-5 llamadas a herramientas por tarea. Después de eso, DEBES finalizar.
+5. Si la instrucción contiene "TERMINA", prioriza finalizar en ≤ 2 pasos.
+
+Para consultas tipo "¿qué está pasando con X?", "tendencias", "últimas noticias":
+- USA web_trend_scan (topic, k:6-10, max_articles:3-5, timelimit:'w')
+- LUEGO FINALIZA con:
+  * 3-6 viñetas claras (insights concretos)
+  * Sección "Fuentes:" con 3-5 URLs
 
 Herramientas disponibles:
 {tool_catalog}
 
-No expliques el JSON, solo devuélvelo.
+Solo devuelve el JSON, nada más.
 """
 
 class Agent:
@@ -36,11 +43,17 @@ class Agent:
         else:
             self.auto_web = bool(auto_web)
 
-    def _messages(self, task: str, observations: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    def _messages(self, task: str, observations: List[Dict[str, Any]], current_step: int = 0) -> List[Dict[str, str]]:
         tool_catalog = tool_catalog_text()
         sys = SYSTEM_PROMPT.format(tool_catalog=tool_catalog)
         msgs = [{"role": "system", "content": sys}]
-        user_content = f"Tarea: {task}\n\nObservaciones previas:\n"
+        
+        # Añadir contador de pasos para que el LLM sepa cuándo finalizar
+        step_warning = ""
+        if current_step >= self.max_steps - 3:
+            step_warning = f"\n\n⚠️ IMPORTANTE: Estás en el paso {current_step+1}/{self.max_steps}. Si ya tienes información, FINALIZA AHORA con {{\"final\": \"...\"}}.\n"
+        
+        user_content = f"Tarea: {task}{step_warning}\n\nObservaciones previas:\n"
         if observations:
             for i, obs in enumerate(observations, start=1):
                 snippet = json.dumps(obs["result"], ensure_ascii=False)
@@ -154,7 +167,7 @@ class Agent:
                 pass
         observations: List[Dict[str, Any]] = []
         for step in range(self.max_steps):
-            messages = self._messages(task, observations)
+            messages = self._messages(task, observations, current_step=step)
             raw = self.llm.generate(messages)
             parsed = self._parse_json(raw)
             if not parsed:
