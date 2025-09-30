@@ -428,6 +428,123 @@ def generate_video_titles_tool(args: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         return _ok(False, None, f"Error generando títulos: {e}")
 
+def deep_analysis_tool(args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Análisis profundo de una noticia con estructura completa:
+    - Resumen (500 palabras)
+    - Por qué importa
+    - Cómo aplicarlo
+    - Calificaciones
+    Args: {'topic': '...'}
+    """
+    try:
+        from advanced_features import analyze_hype_vs_substance, generate_video_titles, calculate_content_score
+        
+        topic = args.get('topic')
+        if not topic:
+            return _ok(False, None, "Falta 'topic'")
+        
+        print(f"🔍 Realizando análisis profundo de: {topic}")
+        
+        # 1. Buscar contenido completo
+        print("   • Buscando información...")
+        search_result = web_search({'query': topic, 'k': 5})
+        
+        content = ""
+        url = ""
+        if search_result.get('ok') and search_result.get('data', {}).get('results'):
+            results = search_result['data']['results']
+            if results:
+                url = results[0].get('url', '')
+                # Obtener contenido completo
+                url_content = read_url_clean({'url': url, 'max_chars': 4000})
+                if url_content.get('ok'):
+                    content = url_content.get('data', {}).get('text', '')
+                
+                # Si no hay contenido, usar snippets
+                if not content:
+                    content = ' '.join(r.get('snippet', '') for r in results[:3])
+        
+        if not content:
+            content = topic
+        
+        print("   ✓ Información recopilada")
+        
+        # 2. Generar análisis con LLM
+        print("   • Generando análisis profundo...")
+        
+        from openai import OpenAI
+        client = OpenAI()
+        
+        prompt = f"""Analiza profundamente esta noticia de IA:
+
+Título: {topic}
+
+Contenido: {content[:3000]}
+
+Genera un análisis estructurado siguiendo este formato EXACTO:
+
+1. RESUMEN (400-500 palabras)
+   - ¿Qué es esto exactamente?
+   - ¿Qué hace diferente o especial?
+   - Detalles técnicos clave
+   - Contexto de la industria
+
+2. POR QUÉ IMPORTA
+   - Impacto en la industria
+   - Implicaciones para desarrolladores/usuarios
+   - Cambios que trae al mercado
+
+3. CÓMO APLICARLO
+   - Pasos prácticos concretos
+   - Casos de uso específicos
+   - Cómo empezar hoy mismo
+
+4. CALIFICACIONES
+   - Novedad: X/10
+   - Impacto: X/10
+   - Aplicabilidad: X/10
+   - Prioridad: ALTA/MEDIA/BAJA
+
+Se claro, práctico y accionable. Evita fluff."""
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "Eres un analista experto de IA que genera reportes profundos, prácticos y accionables. Sigues estructuras exactas y das información concreta."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.4,
+            max_tokens=1500
+        )
+        
+        analysis = response.choices[0].message.content
+        print("   ✓ Análisis completado")
+        
+        # 3. Formatear elegantemente
+        output = "📊 ANÁLISIS PROFUNDO\n"
+        output += "═" * 70 + "\n\n"
+        output += f"🎯 Tema: {topic}\n\n"
+        
+        if url:
+            from urllib.parse import urlparse
+            domain = urlparse(url).netloc
+            output += f"🔗 Fuente: {domain}\n\n"
+        
+        output += "─" * 70 + "\n\n"
+        output += analysis
+        output += "\n\n" + "─" * 70 + "\n\n"
+        output += "💡 Tip: Usa 'genera títulos para [tema]' para ideas de contenido\n"
+        
+        return _ok(True, {
+            'formatted_deep_analysis': output,
+            'raw_analysis': analysis
+        }, "")
+        
+    except Exception as e:
+        import traceback
+        return _ok(False, None, f"Error en análisis profundo: {e}\n{traceback.format_exc()[:500]}")
+
 def analyze_hype_tool(args: Dict[str, Any]) -> Dict[str, Any]:
     """
     Analiza si un tema es hype o sustancia.
@@ -688,4 +805,5 @@ TOOLS["daily_digest"] = ("Genera digest diario de noticias IA. Args: {'hours':24
 TOOLS["analyze_topic"] = ("Analiza un tema con scoring avanzado. Args: {'topic':'...','content':'','analyze_all':False}", analyze_topic_advanced)
 TOOLS["generate_titles"] = ("Genera títulos virales para un tema. Args: {'topic':'...'}", generate_video_titles_tool)
 TOOLS["analyze_hype"] = ("Analiza si un tema es hype o sustancia. Args: {'title':'...','content':'...'}", analyze_hype_tool)
+TOOLS["deep_analysis"] = ("Análisis profundo de noticia: resumen 500 palabras + por qué importa + cómo aplicarlo + calificaciones. Args: {'topic':'...'}", deep_analysis_tool)
 

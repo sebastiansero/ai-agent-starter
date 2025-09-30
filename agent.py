@@ -192,6 +192,8 @@ class Agent:
                         return result.get("data", {}).get("formatted_titles", "Títulos no disponibles")
                     elif tool_name == "analyze_hype":
                         return result.get("data", {}).get("formatted_hype_analysis", "Análisis no disponible")
+                    elif tool_name == "deep_analysis":
+                        return result.get("data", {}).get("formatted_deep_analysis", "Análisis profundo no disponible")
 
                 observations.append({"tool": tool_name, "result": result})
 

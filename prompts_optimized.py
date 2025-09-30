@@ -45,6 +45,10 @@ ESTRATEGIA POR TIPO DE TAREA:
 🎭 Para "es hype esto?" / "es real o marketing?" / "vale la pena?":
    Paso 1: {{"tool": "analyze_hype", "args": {{"title": "<título>", "content": "<contenido>"}}}}
    Paso 2: {{"final": "<mostrar formatted del análisis>"}}
+
+📊 Para "análisis profundo de X" / "resumen detallado" / "explica X a fondo":
+   Paso 1: {{"tool": "deep_analysis", "args": {{"topic": "<tema>"}}}}
+   Paso 2: {{"final": "<mostrar formatted_deep_analysis con estructura completa>"}}
    
 🔬 Para preguntas técnicas específicas:
    Paso 1: {{"tool": "web_search", "args": {{"query": "<pregunta>", "k": 5}}}}
