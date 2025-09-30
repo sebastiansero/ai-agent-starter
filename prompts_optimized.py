@@ -29,6 +29,22 @@ ESTRATEGIA POR TIPO DE TAREA:
 📰 Para "últimas noticias" / "tendencias" / "qué está pasando":
    Paso 1: {{"tool": "web_trend_scan", "args": {{"topic": "<tema>", "k": 8, "max_articles": 3, "timelimit": "w"}}}}
    Paso 2: {{"final": "## <tema>\\n\\n• Insight 1\\n• Insight 2\\n...\\n\\nFuentes:\\n- url1\\n- url2"}}
+
+📊 Para "daily digest" / "resumen del día" / "noticias de IA hoy":
+   Paso 1: {{"tool": "daily_digest", "args": {{"hours": 24, "max_topics": 20, "use_advanced": true}}}}
+   Paso 2: {{"final": "<usar preview del digest>"}}
+
+🎯 Para "analiza el tema X" / "qué tan bueno es X" / "vale la pena hacer video de X":
+   Paso 1: {{"tool": "analyze_topic", "args": {{"topic": "<tema>", "analyze_all": false}}}}
+   Paso 2: {{"final": "<mostrar summary del análisis>"}}
+
+✏️ Para "genera títulos para X" / "ideas de títulos" / "título viral":
+   Paso 1: {{"tool": "generate_titles", "args": {{"topic": "<tema>"}}}}
+   Paso 2: {{"final": "<mostrar formatted de los títulos>"}}
+
+🎭 Para "es hype esto?" / "es real o marketing?" / "vale la pena?":
+   Paso 1: {{"tool": "analyze_hype", "args": {{"title": "<título>", "content": "<contenido>"}}}}
+   Paso 2: {{"final": "<mostrar formatted del análisis>"}}
    
 🔬 Para preguntas técnicas específicas:
    Paso 1: {{"tool": "web_search", "args": {{"query": "<pregunta>", "k": 5}}}}

@@ -168,6 +168,164 @@ from duckduckgo_search import DDGS
 import trafilatura
 from cache_manager import cacheable
 
+# --- FASE 3: ADVANCED FEATURES ---
+
+def generate_daily_digest_tool(args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Genera el digest diario de noticias de IA.
+    Args: {'hours': 24, 'max_topics': 20, 'use_advanced': True}
+    """
+    try:
+        from daily_digest_optimized import generate_daily_digest
+        
+        hours = int(args.get('hours', 24))
+        max_topics = int(args.get('max_topics', 20))
+        use_advanced = args.get('use_advanced', True)
+        
+        result = generate_daily_digest(
+            hours_back=hours,
+            max_topics=max_topics,
+            use_batch=False,  # Sin batch para que sea rápido en chat
+            use_advanced_features=use_advanced,
+            save_to_file=False
+        )
+        
+        # Retornar preview del digest
+        digest_preview = result['digest'][:2000] + "..." if len(result['digest']) > 2000 else result['digest']
+        
+        return _ok(True, {
+            'preview': digest_preview,
+            'stats': result['stats'],
+            'full_digest': result['digest']
+        }, "")
+        
+    except Exception as e:
+        return _ok(False, None, f"Error generando digest: {e}")
+
+def analyze_topic_advanced(args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Analiza un tema con las funciones avanzadas de Fase 3.
+    Args: {'topic': 'GPT-5 Release', 'content': 'optional text', 'analyze_all': True}
+    """
+    try:
+        from advanced_features import comprehensive_topic_analysis
+        
+        topic = args.get('topic')
+        if not topic:
+            return _ok(False, None, "Falta 'topic'")
+        
+        content = args.get('content', '')
+        analyze_all = args.get('analyze_all', False)
+        
+        result = comprehensive_topic_analysis(
+            topic=topic,
+            content=content,
+            novelty_score=0.9,
+            analyze_all=analyze_all
+        )
+        
+        # Formatear resultado para el chat
+        summary = f"""## 🎯 Análisis de: {topic}
+
+**Score:** {result['score']['final_score']:.1f}/100
+**Prioridad:** {result['score']['priority'].upper()}
+**Recomendación:** {result['score']['recommendation']}
+"""
+        
+        if result.get('titles') and result['titles']['titles']:
+            summary += "\n**Mejores Títulos:**\n"
+            for i, t in enumerate(result['titles']['titles'][:3], 1):
+                summary += f"{i}. \"{t['title']}\" (viral: {t['viral_potential']}/10)\n"
+        
+        return _ok(True, {
+            'summary': summary,
+            'full_result': result
+        }, "")
+        
+    except Exception as e:
+        return _ok(False, None, f"Error analizando tema: {e}")
+
+def generate_video_titles_tool(args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Genera títulos virales para un tema.
+    Args: {'topic': 'AI Model Release'}
+    """
+    try:
+        from advanced_features import generate_video_titles
+        
+        topic = args.get('topic')
+        if not topic:
+            return _ok(False, None, "Falta 'topic'")
+        
+        result = generate_video_titles(topic)
+        
+        # Formatear títulos
+        titles_text = f"## ✏️ Títulos para: {topic}\n\n"
+        for i, t in enumerate(result['titles'], 1):
+            titles_text += f"{i}. **\"{t['title']}\"**\n"
+            titles_text += f"   - Viral: {t['viral_potential']}/10\n"
+            titles_text += f"   - Hook: {t['hook']}\n\n"
+        
+        if result.get('thumbnail_ideas'):
+            titles_text += "**💡 Ideas de Thumbnail:**\n"
+            for i, idea in enumerate(result['thumbnail_ideas'], 1):
+                titles_text += f"{i}. {idea}\n"
+        
+        return _ok(True, {
+            'formatted': titles_text,
+            'titles': result['titles'],
+            'thumbnails': result.get('thumbnail_ideas', [])
+        }, "")
+        
+    except Exception as e:
+        return _ok(False, None, f"Error generando títulos: {e}")
+
+def analyze_hype_tool(args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Analiza si un tema es hype o sustancia.
+    Args: {'title': '...', 'content': '...'}
+    """
+    try:
+        from advanced_features import analyze_hype_vs_substance
+        
+        title = args.get('title', '')
+        content = args.get('content', '')
+        
+        if not title and not content:
+            return _ok(False, None, "Falta 'title' o 'content'")
+        
+        result = analyze_hype_vs_substance(title, content)
+        
+        # Formatear resultado
+        analysis = f"""## 🎭 Análisis de Hype
+
+**Veredicto:** {result['verdict'].upper()}
+**Sustancia:** {result['substance_score']:.1f}/10
+**Hype:** {result['hype_score']:.1f}/10
+
+**Razonamiento:** {result['reasoning']}
+"""
+        
+        if result.get('green_flags'):
+            analysis += "\n✅ **Green Flags:**\n"
+            for flag in result['green_flags']:
+                analysis += f"- {flag}\n"
+        
+        if result.get('red_flags'):
+            analysis += "\n🚩 **Red Flags:**\n"
+            for flag in result['red_flags']:
+                analysis += f"- {flag}\n"
+        
+        return _ok(True, {
+            'formatted': analysis,
+            'verdict': result['verdict'],
+            'substance_score': result['substance_score'],
+            'hype_score': result['hype_score']
+        }, "")
+        
+    except Exception as e:
+        return _ok(False, None, f"Error analizando hype: {e}")
+
 def _web_search_internal(q: str, k: int):
     """Helper interno cacheado para web_search"""
     results = []
@@ -372,4 +530,10 @@ def web_trend_scan(args):
 TOOLS["web_search"] = ("Busca en la web. Args: {'query':'...','k':5}", web_search)
 TOOLS["read_url_clean"] = ("Lee y limpia texto de una URL. Args: {'url':'https://...','max_chars':4000}", read_url_clean)
 TOOLS["web_trend_scan"] = ("Escanea tendencias web de un tema. Args: {'topic':'...','k':10,'max_articles':5,'timelimit':'w','max_chars':4000}", web_trend_scan)
+
+# Fase 3: Advanced Features
+TOOLS["daily_digest"] = ("Genera digest diario de noticias IA. Args: {'hours':24,'max_topics':20,'use_advanced':True}", generate_daily_digest_tool)
+TOOLS["analyze_topic"] = ("Analiza un tema con scoring avanzado. Args: {'topic':'...','content':'','analyze_all':False}", analyze_topic_advanced)
+TOOLS["generate_titles"] = ("Genera títulos virales para un tema. Args: {'topic':'...'}", generate_video_titles_tool)
+TOOLS["analyze_hype"] = ("Analiza si un tema es hype o sustancia. Args: {'title':'...','content':'...'}", analyze_hype_tool)
 
