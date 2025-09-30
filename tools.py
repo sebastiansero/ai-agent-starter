@@ -185,28 +185,51 @@ def generate_daily_digest_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         
         # Obtener contenido con contexto
         print(f"🔍 Buscando noticias de las últimas {hours} horas...")
-        rss_data = fetch_all_rss_feeds(hours=hours, categories=['substacks', 'tech_media', 'research'])
-        web_articles = search_ai_news_advanced(hours=hours, k=15)
+        print("   • RSS feeds (Substacks, Tech Media, Research, Company Blogs)...")
+        rss_data = fetch_all_rss_feeds(
+            hours=hours, 
+            categories=['substacks', 'tech_media', 'research', 'company_blogs', 'communities']
+        )
+        print(f"   ✓ {len(rss_data['all_posts'])} posts encontrados en RSS")
+        
+        print("   • Búsqueda web avanzada...")
+        web_articles = search_ai_news_advanced(hours=hours, k=10)
+        print(f"   ✓ {len(web_articles)} artículos web encontrados")
         
         # Combinar y formatear elegantemente
         all_content = []
         
-        # Procesar RSS
-        for post in rss_data['all_posts'][:8]:
+        # Priorizar contenido por fuente
+        # 1. Substacks (alta prioridad - contenido curado)
+        substacks = [p for p in rss_data['all_posts'] if p.get('category') == 'substacks']
+        for post in substacks[:6]:  # Top 6 de Substacks
             all_content.append({
                 'title': post.get('title', ''),
                 'summary': post.get('summary', '')[:300],
-                'source': post.get('source_name', 'Unknown'),
-                'url': post.get('link', '')
+                'source': f"📝 {post.get('source_name', 'Substack')}",
+                'url': post.get('link', ''),
+                'priority': 'high'
             })
         
-        # Procesar Web
-        for article in web_articles[:7]:
+        # 2. Otros RSS (company blogs, tech media)
+        other_rss = [p for p in rss_data['all_posts'] if p.get('category') != 'substacks']
+        for post in other_rss[:6]:  # Top 6 de otros RSS
+            all_content.append({
+                'title': post.get('title', ''),
+                'summary': post.get('summary', '')[:300],
+                'source': f"📰 {post.get('source_name', 'RSS')}",
+                'url': post.get('link', ''),
+                'priority': 'medium'
+            })
+        
+        # 3. Web search (complementario)
+        for article in web_articles[:3]:  # Solo top 3 de web
             all_content.append({
                 'title': article.get('title', ''),
                 'summary': article.get('snippet', article.get('full_text', ''))[:300],
-                'source': 'Web',
-                'url': article.get('url', '')
+                'source': '🌐 Web',
+                'url': article.get('url', ''),
+                'priority': 'low'
             })
         
         # Formatear elegantemente
@@ -214,6 +237,13 @@ def generate_daily_digest_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         output += "═" * 60 + "\n\n"
         output += f"📊 Análisis de las últimas {hours} horas\n"
         output += f"📰 {len(all_content)} noticias encontradas\n"
+        
+        # Mostrar breakdown de fuentes
+        substack_count = len([c for c in all_content if 'Substack' in c.get('source', '') or '📝' in c.get('source', '')])
+        rss_count = len([c for c in all_content if '📰' in c.get('source', '')])
+        web_count = len([c for c in all_content if '🌐' in c.get('source', '')])
+        
+        output += f"   📝 Substacks: {substack_count} | 📰 Tech Media: {rss_count} | 🌐 Web: {web_count}\n"
         output += f"⏰ {datetime.now().strftime('%d/%m/%Y %H:%M')}\n\n"
         output += "─" * 60 + "\n\n"
         
