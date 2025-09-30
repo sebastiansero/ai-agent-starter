@@ -175,12 +175,23 @@ class Agent:
                     result = {"ok": False, "data": None, "error": str(e)}
 
                 # Autocierre para herramientas rápidas
-                if result.get("ok") and tool_name in ("memory_set", "memory_get"):
+                if result.get("ok"):
+                    # Herramientas de memoria
                     if tool_name == "memory_set":
                         return f"OK: guardado {args.get('key')}"
-                    else:
+                    elif tool_name == "memory_get":
                         val = result.get("data", {}).get("value")
                         return "" if val is None else str(val)
+                    
+                    # Herramientas de Fase 3 - Retornar formato limpio directamente
+                    elif tool_name == "daily_digest":
+                        return result.get("data", {}).get("formatted_digest", "Digest no disponible")
+                    elif tool_name == "analyze_topic":
+                        return result.get("data", {}).get("formatted_analysis", "Análisis no disponible")
+                    elif tool_name == "generate_titles":
+                        return result.get("data", {}).get("formatted_titles", "Títulos no disponibles")
+                    elif tool_name == "analyze_hype":
+                        return result.get("data", {}).get("formatted_hype_analysis", "Análisis no disponible")
 
                 observations.append({"tool": tool_name, "result": result})
 

@@ -7,6 +7,7 @@ import os
 import json
 import math
 from typing import Any, Dict, Tuple
+from datetime import datetime
 
 import requests
 import re
@@ -177,30 +178,78 @@ def generate_daily_digest_tool(args: Dict[str, Any]) -> Dict[str, Any]:
     """
     try:
         from daily_digest_optimized import generate_daily_digest
+        from ai_content_research import fetch_all_rss_feeds, search_ai_news_advanced
         
         hours = int(args.get('hours', 24))
-        max_topics = int(args.get('max_topics', 20))
-        use_advanced = args.get('use_advanced', True)
+        max_topics = int(args.get('max_topics', 15))  # Reducido para más detalle
         
-        result = generate_daily_digest(
-            hours_back=hours,
-            max_topics=max_topics,
-            use_batch=False,  # Sin batch para que sea rápido en chat
-            use_advanced_features=use_advanced,
-            save_to_file=False
-        )
+        # Obtener contenido con contexto
+        print(f"🔍 Buscando noticias de las últimas {hours} horas...")
+        rss_data = fetch_all_rss_feeds(hours=hours, categories=['substacks', 'tech_media', 'research'])
+        web_articles = search_ai_news_advanced(hours=hours, k=15)
         
-        # Retornar preview del digest
-        digest_preview = result['digest'][:2000] + "..." if len(result['digest']) > 2000 else result['digest']
+        # Combinar y formatear elegantemente
+        all_content = []
+        
+        # Procesar RSS
+        for post in rss_data['all_posts'][:8]:
+            all_content.append({
+                'title': post.get('title', ''),
+                'summary': post.get('summary', '')[:300],
+                'source': post.get('source_name', 'Unknown'),
+                'url': post.get('link', '')
+            })
+        
+        # Procesar Web
+        for article in web_articles[:7]:
+            all_content.append({
+                'title': article.get('title', ''),
+                'summary': article.get('snippet', article.get('full_text', ''))[:300],
+                'source': 'Web',
+                'url': article.get('url', '')
+            })
+        
+        # Formatear elegantemente
+        output = "🤖 Digest Diario de IA\n"
+        output += "═" * 60 + "\n\n"
+        output += f"📊 Análisis de las últimas {hours} horas\n"
+        output += f"📰 {len(all_content)} noticias encontradas\n"
+        output += f"⏰ {datetime.now().strftime('%d/%m/%Y %H:%M')}\n\n"
+        output += "─" * 60 + "\n\n"
+        
+        for i, item in enumerate(all_content[:max_topics], 1):
+            # Emoji según el índice
+            emoji = "🔥" if i <= 3 else "✨" if i <= 7 else "📌"
+            
+            output += f"{emoji} {i}. {item['title']}\n\n"
+            
+            # Agregar contexto/resumen
+            if item['summary']:
+                summary_clean = item['summary'].replace('\n', ' ').strip()
+                if len(summary_clean) > 250:
+                    summary_clean = summary_clean[:247] + "..."
+                output += f"   {summary_clean}\n\n"
+            
+            # Fuente y URL
+            output += f"   📍 Fuente: {item['source']}\n"
+            if item['url']:
+                # Mostrar dominio en lugar de URL completa
+                from urllib.parse import urlparse
+                domain = urlparse(item['url']).netloc or item['url']
+                output += f"   🔗 {domain}\n"
+            
+            output += "\n" + "─" * 60 + "\n\n"
+        
+        output += "\n💡 Tip: Usa 'analiza el tema [título]' para análisis profundo de cualquier noticia\n"
         
         return _ok(True, {
-            'preview': digest_preview,
-            'stats': result['stats'],
-            'full_digest': result['digest']
+            'formatted_digest': output,
+            'count': len(all_content)
         }, "")
         
     except Exception as e:
-        return _ok(False, None, f"Error generando digest: {e}")
+        import traceback
+        return _ok(False, None, f"Error generando digest: {e}\n{traceback.format_exc()[:500]}")
 
 def analyze_topic_advanced(args: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -224,22 +273,42 @@ def analyze_topic_advanced(args: Dict[str, Any]) -> Dict[str, Any]:
             analyze_all=analyze_all
         )
         
-        # Formatear resultado para el chat
-        summary = f"""## 🎯 Análisis de: {topic}
-
-**Score:** {result['score']['final_score']:.1f}/100
-**Prioridad:** {result['score']['priority'].upper()}
-**Recomendación:** {result['score']['recommendation']}
-"""
+        # Formatear elegantemente sin markdown
+        priority_emoji = {'🔥': 'high', '👍': 'medium', '⏸️': 'low'}
+        priority = result['score']['priority']
+        emoji = '🔥' if priority == 'high' else '👍' if priority == 'medium' else '⏸️'
         
+        output = f"🎯 Análisis Completo: {topic}\n"
+        output += "═" * 60 + "\n\n"
+        
+        # Score y prioridad
+        output += f"📊 Score General: {result['score']['final_score']:.1f}/100\n"
+        output += f"{emoji} Prioridad: {priority.upper()}\n\n"
+        
+        # Breakdown de scores
+        breakdown = result['score']['breakdown']
+        output += "📊 Desglose de Factores:\n"
+        output += f"   • Novedad: {breakdown['novelty']:.1f}/10\n"
+        output += f"   • Sustancia: {breakdown['substance']:.1f}/10\n"
+        output += f"   • Oportunidad: {breakdown['opportunity']:.1f}/10\n"
+        output += f"   • Timing: {breakdown['timing']:.1f}/10\n\n"
+        
+        # Recomendación
+        output += f"💡 Recomendación: {result['score']['recommendation']}\n\n"
+        output += "─" * 60 + "\n\n"
+        
+        # Títulos sugeridos
         if result.get('titles') and result['titles']['titles']:
-            summary += "\n**Mejores Títulos:**\n"
+            output += "✏️ Títulos Sugeridos para Video:\n\n"
             for i, t in enumerate(result['titles']['titles'][:3], 1):
-                summary += f"{i}. \"{t['title']}\" (viral: {t['viral_potential']}/10)\n"
+                output += f"{i}. {t['title']}\n"
+                output += f"   ⭐ Potencial Viral: {t['viral_potential']}/10\n"
+                output += f"   🎯 Hook: {t['hook']}\n\n"
         
         return _ok(True, {
-            'summary': summary,
-            'full_result': result
+            'formatted_analysis': output,
+            'score': result['score']['final_score'],
+            'priority': priority
         }, "")
         
     except Exception as e:
@@ -259,22 +328,29 @@ def generate_video_titles_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         
         result = generate_video_titles(topic)
         
-        # Formatear títulos
-        titles_text = f"## ✏️ Títulos para: {topic}\n\n"
+        # Formatear elegantemente sin markdown
+        output = f"✏️ Títulos Virales para: {topic}\n"
+        output += "═" * 60 + "\n\n"
+        
         for i, t in enumerate(result['titles'], 1):
-            titles_text += f"{i}. **\"{t['title']}\"**\n"
-            titles_text += f"   - Viral: {t['viral_potential']}/10\n"
-            titles_text += f"   - Hook: {t['hook']}\n\n"
+            # Emoji según potencial viral
+            viral = t['viral_potential']
+            emoji = "🔥" if viral >= 8 else "✨" if viral >= 6 else "📌"
+            
+            output += f"{emoji} {i}. {t['title']}\n\n"
+            output += f"   ⭐ Potencial Viral: {viral}/10\n"
+            output += f"   🎯 Hook: {t['hook']}\n"
+            output += f"   🧠 Por qué funciona: {t['reasoning'][:150]}...\n\n"
+            output += "─" * 60 + "\n\n"
         
         if result.get('thumbnail_ideas'):
-            titles_text += "**💡 Ideas de Thumbnail:**\n"
+            output += "🎨 Ideas para Thumbnail:\n\n"
             for i, idea in enumerate(result['thumbnail_ideas'], 1):
-                titles_text += f"{i}. {idea}\n"
+                output += f"  {i}. {idea}\n"
         
         return _ok(True, {
-            'formatted': titles_text,
-            'titles': result['titles'],
-            'thumbnails': result.get('thumbnail_ideas', [])
+            'formatted_titles': output,
+            'count': len(result['titles'])
         }, "")
         
     except Exception as e:
@@ -296,31 +372,35 @@ def analyze_hype_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         
         result = analyze_hype_vs_substance(title, content)
         
-        # Formatear resultado
-        analysis = f"""## 🎭 Análisis de Hype
-
-**Veredicto:** {result['verdict'].upper()}
-**Sustancia:** {result['substance_score']:.1f}/10
-**Hype:** {result['hype_score']:.1f}/10
-
-**Razonamiento:** {result['reasoning']}
-"""
+        # Formatear elegantemente sin markdown
+        verdict = result['verdict'].upper()
+        verdict_emoji = "✅" if verdict == "SUBSTANCE" else "⚠️" if verdict == "MIXED" else "🚨"
+        
+        output = f"🎭 Análisis de Hype vs Sustancia\n"
+        output += "═" * 60 + "\n\n"
+        
+        output += f"{verdict_emoji} Veredicto: {verdict}\n\n"
+        output += f"📊 Scores:\n"
+        output += f"   • Sustancia: {result['substance_score']:.1f}/10\n"
+        output += f"   • Hype: {result['hype_score']:.1f}/10\n\n"
+        
+        output += f"🧠 Razonamiento:\n   {result['reasoning']}\n\n"
+        output += "─" * 60 + "\n\n"
         
         if result.get('green_flags'):
-            analysis += "\n✅ **Green Flags:**\n"
+            output += "✅ Señales Positivas:\n"
             for flag in result['green_flags']:
-                analysis += f"- {flag}\n"
+                output += f"   • {flag}\n"
+            output += "\n"
         
         if result.get('red_flags'):
-            analysis += "\n🚩 **Red Flags:**\n"
+            output += "🚩 Señales de Alerta:\n"
             for flag in result['red_flags']:
-                analysis += f"- {flag}\n"
+                output += f"   • {flag}\n"
         
         return _ok(True, {
-            'formatted': analysis,
-            'verdict': result['verdict'],
-            'substance_score': result['substance_score'],
-            'hype_score': result['hype_score']
+            'formatted_hype_analysis': output,
+            'verdict': verdict
         }, "")
         
     except Exception as e:
