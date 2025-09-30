@@ -264,12 +264,54 @@ def analyze_topic_advanced(args: Dict[str, Any]) -> Dict[str, Any]:
             return _ok(False, None, "Falta 'topic'")
         
         content = args.get('content', '')
-        analyze_all = args.get('analyze_all', False)
+        analyze_all = args.get('analyze_all', True)  # Cambiar a True por defecto para análisis completo
+        
+        # Si no hay contenido, buscar en web para tener contexto
+        if not content:
+            print(f"🔍 Buscando información sobre: {topic}")
+            try:
+                # Buscar contenido relacionado
+                search_result = web_search({'query': topic, 'k': 3})
+                if search_result.get('ok') and search_result.get('data', {}).get('results'):
+                    results = search_result['data']['results']
+                    # Obtener snippet del primer resultado
+                    if results:
+                        first_url = results[0].get('url')
+                        if first_url:
+                            url_content = read_url_clean({'url': first_url, 'max_chars': 2000})
+                            if url_content.get('ok'):
+                                content = url_content.get('data', {}).get('text', '')
+                        
+                        # Si no hay contenido de URL, usar snippets
+                        if not content:
+                            content = ' '.join(r.get('snippet', '') for r in results[:2])[:1500]
+            except Exception as e:
+                print(f"⚠️ No se pudo buscar contenido: {e}")
+                content = topic  # Fallback al tema
+        
+        # Calcular novelty score basado en keywords comunes vs únicos
+        novelty_score = 0.85  # Default alto pero no máximo
+        
+        # Ajustar novelty según keywords en el título
+        title_lower = topic.lower()
+        
+        # Temas muy comunes/saturados
+        if any(kw in title_lower for kw in ['chatgpt', 'tutorial', 'beginner', 'guide', 'how to']):
+            novelty_score = 0.4
+        # Temas medianamente comunes
+        elif any(kw in title_lower for kw in ['ai', 'gpt', 'llm', 'openai', 'google']):
+            novelty_score = 0.65
+        # Temas con releases/anuncios importantes
+        elif any(kw in title_lower for kw in ['release', 'launch', 'announce', 'breakthrough', 'new model']):
+            novelty_score = 0.9
+        # Temas muy específicos/técnicos
+        elif any(kw in title_lower for kw in ['benchmark', 'architecture', 'research', 'paper', 'study']):
+            novelty_score = 0.85
         
         result = comprehensive_topic_analysis(
             topic=topic,
             content=content,
-            novelty_score=0.9,
+            novelty_score=novelty_score,
             analyze_all=analyze_all
         )
         
